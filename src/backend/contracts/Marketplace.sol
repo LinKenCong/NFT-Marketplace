@@ -30,6 +30,15 @@ contract Marketplace is ReentrancyGuard {
         address indexed seller
     );
 
+    event Bought(
+        uint256 itemId,
+        address indexed nft,
+        uint256 tokenId,
+        uint256 price,
+        address indexed seller,
+        address indexed buyer
+    );
+
     mapping(uint256 => Item) public items;
 
     constructor(uint256 _feePercent) {
@@ -37,6 +46,7 @@ contract Marketplace is ReentrancyGuard {
         feePercent = _feePercent;
     }
 
+    /// @dev 创建商品
     function makeItem(
         IERC721 _nft,
         uint256 _tokenId,
@@ -55,12 +65,36 @@ contract Marketplace is ReentrancyGuard {
             false
         );
 
-        emit Offered(
-            itemCount,
-            address(_nft),
-            _tokenId,
-            _price,
+        emit Offered(itemCount, address(_nft), _tokenId, _price, msg.sender);
+    }
+
+    /// @dev 购买商品
+    function purchaseItem(uint256 _itemId) external payable nonReentrant {
+        uint256 _totalPrice = getTotalPrice(_itemId);
+        Item storage item = items[_itemId];
+        require(_itemId > 0 && _itemId <= itemCount, "item doesn't exist.");
+        require(
+            msg.value >= _totalPrice,
+            "not enough ether to cover item price and market fee."
+        );
+        require(!item.sold, "item already sold.");
+
+        item.seller.transfer(item.price);
+        feeAccount.transfer(_totalPrice - item.price);
+        item.sold = true;
+        item.nft.transferFrom(address(this), msg.sender, item.tokenId);
+        emit Bought(
+            _itemId,
+            address(item.nft),
+            item.tokenId,
+            item.price,
+            item.seller,
             msg.sender
         );
+    }
+
+    /// @dev 获取商品总价
+    function getTotalPrice(uint256 _itemId) public view returns (uint256) {
+        return (items[_itemId].price * (100 + feePercent)) / 100;
     }
 }
